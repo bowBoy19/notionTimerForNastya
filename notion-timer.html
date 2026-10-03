@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notion Timer</title>
+<style>
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  }
+
+  .timer {
+    width: min(420px, 92vw);
+    padding: 28px;
+    border-radius: 24px;
+    background: rgba(255,255,255,0.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    text-align: center;
+  }
+
+  .display {
+    font-variant-numeric: tabular-nums;
+    font-size: clamp(56px, 13vw, 92px);
+    font-weight: 600;
+    letter-spacing: -3px;
+    line-height: 1;
+    color: #222;
+    margin: 8px 0 24px;
+  }
+
+  .inputs {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  input {
+    width: 82px;
+    padding: 10px 8px;
+    border: 1px solid rgba(0,0,0,.12);
+    border-radius: 10px;
+    background: rgba(255,255,255,.8);
+    text-align: center;
+    font-size: 16px;
+    outline: none;
+  }
+
+  input:focus {
+    border-color: rgba(0,0,0,.35);
+  }
+
+  button {
+    border: 0;
+    border-radius: 12px;
+    padding: 11px 18px;
+    margin: 3px;
+    font-size: 15px;
+    cursor: pointer;
+    background: #222;
+    color: white;
+  }
+
+  button.secondary {
+    background: rgba(0,0,0,.08);
+    color: #222;
+  }
+
+  .presets {
+    margin-top: 14px;
+  }
+
+  .presets button {
+    font-size: 13px;
+    padding: 8px 11px;
+  }
+
+  .status {
+    min-height: 20px;
+    margin-top: 12px;
+    font-size: 13px;
+    color: #777;
+  }
+
+  body.finished .timer {
+    animation: pulse .8s ease-in-out 3;
+  }
+
+  @keyframes pulse {
+    50% { transform: scale(1.025); }
+  }
+</style>
+</head>
+
+<body>
+  <div class="timer">
+    <div id="display" class="display">25:00</div>
+
+    <div class="inputs">
+      <input id="minutes" type="number" min="0" max="60" value="25" aria-label="Minutes">
+      <input id="seconds" type="number" min="0" max="59" value="0" aria-label="Seconds">
+    </div>
+
+    <div>
+      <button id="start">Start</button>
+      <button id="pause" class="secondary">Pause</button>
+      <button id="reset" class="secondary">Reset</button>
+    </div>
+
+    <div class="presets">
+      <button class="secondary" data-min="5">5 min</button>
+      <button class="secondary" data-min="10">10 min</button>
+      <button class="secondary" data-min="25">25 min</button>
+      <button class="secondary" data-min="45">45 min</button>
+      <button class="secondary" data-min="60">60 min</button>
+    </div>
+
+    <div id="status" class="status"></div>
+  </div>
+
+<script>
+  let totalSeconds = 25 * 60;
+  let remaining = totalSeconds;
+  let interval = null;
+  let running = false;
+
+  const display = document.getElementById("display");
+  const minutesInput = document.getElementById("minutes");
+  const secondsInput = document.getElementById("seconds");
+  const status = document.getElementById("status");
+
+  function formatTime(seconds) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return String(m).padStart(2, "0") + ":" + String(s).padStart(2, "0");
+  }
+
+  function updateDisplay() {
+    display.textContent = formatTime(remaining);
+    document.title = formatTime(remaining) + " — Timer";
+  }
+
+  function getInputSeconds() {
+    let m = Math.max(0, Math.min(60, Number(minutesInput.value) || 0));
+    let s = Math.max(0, Math.min(59, Number(secondsInput.value) || 0));
+    if (m === 60) s = 0;
+    minutesInput.value = m;
+    secondsInput.value = s;
+    return m * 60 + s;
+  }
+
+  function setTimer(seconds) {
+    pause();
+    totalSeconds = seconds;
+    remaining = seconds;
+    minutesInput.value = Math.floor(seconds / 60);
+    secondsInput.value = seconds % 60;
+    status.textContent = "";
+    document.body.classList.remove("finished");
+    updateDisplay();
+  }
+
+  function start() {
+    if (running) return;
+
+    if (remaining <= 0) {
+      remaining = getInputSeconds();
+      if (remaining <= 0) return;
+    }
+
+    totalSeconds = remaining;
+    running = true;
+    status.textContent = "Running";
+
+    interval = setInterval(() => {
+      remaining--;
+      updateDisplay();
+
+      if (remaining <= 0) {
+        clearInterval(interval);
+        interval = null;
+        running = false;
+        status.textContent = "Time's up!";
+        document.body.classList.add("finished");
+        beep();
+      }
+    }, 1000);
+  }
+
+  function pause() {
+    if (interval) clearInterval(interval);
+    interval = null;
+    running = false;
+    if (remaining > 0) status.textContent = "Paused";
+  }
+
+  function reset() {
+    pause();
+    remaining = getInputSeconds();
+    totalSeconds = remaining;
+    status.textContent = "";
+    document.body.classList.remove("finished");
+    updateDisplay();
+  }
+
+  function beep() {
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.frequency.value = 880;
+      gain.gain.value = 0.08;
+      osc.start();
+      osc.stop(ctx.currentTime + 0.25);
+    } catch (e) {}
+  }
+
+  document.getElementById("start").onclick = start;
+  document.getElementById("pause").onclick = pause;
+  document.getElementById("reset").onclick = reset;
+
+  [minutesInput, secondsInput].forEach(input => {
+    input.addEventListener("change", reset);
+  });
+
+  document.querySelectorAll("[data-min]").forEach(button => {
+    button.onclick = () => setTimer(Number(button.dataset.min) * 60);
+  });
+
+  updateDisplay();
+</script>
+</body>
+</html>
